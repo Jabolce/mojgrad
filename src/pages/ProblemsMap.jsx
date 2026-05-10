@@ -131,15 +131,16 @@ export default function ProblemsMap() {
   return (
     <div className="flex flex-col flex-1">
       {/* Search & Filters Bar */}
-      <div className="bg-white border-b border-gray-100 px-6 py-3">
-        <div className="max-w-[1400px] mx-auto flex items-center gap-4">
+      <div className="bg-white border-b border-gray-100 px-6 py-2.5">
+        <div className="flex items-center justify-center gap-4">
           {/* Search */}
-          <div className="relative flex-1 max-w-[480px]">
+          <div className="relative" style={{ width: 300 }}>
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               placeholder="Пребарај по наслов или населба..."
-              className="w-full pl-10 pr-4 py-2.5 bg-[#f5f7fb] border border-gray-200 rounded-full text-sm text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0a96f4]/20 focus:border-[#0a96f4] transition-all"
+              className="w-full pr-4 h-10 bg-[#f5f7fb] border border-gray-200 rounded-full text-[13px] leading-normal text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0a96f4]/20 focus:border-[#0a96f4] transition-all"
+              style={{ paddingLeft: 44 }}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -179,7 +180,7 @@ export default function ProblemsMap() {
       </div>
 
       {/* Map Area */}
-      <div className="relative" style={{ height: 'calc(100vh - 64px - 52px - 57px)' }}>
+      <div className="relative flex-1">
         <MapContainer
           center={[42.0, 21.4340]}
           zoom={14}

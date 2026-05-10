@@ -1,12 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { Bell, MapPin, Building2 } from 'lucide-react'
-
-const navItems = [
-  { label: 'Мапа', path: '/map' },
-  { label: 'Пријави Проблем', path: '/report' },
-  { label: 'Статистика', path: '/stats' },
-  { label: 'Информации', path: '/info' },
-]
+import { Building2 } from 'lucide-react'
+import MainNavbar from '../components/MainNavbar'
 
 export default function PublicLayout() {
   const location = useLocation()
@@ -14,56 +8,7 @@ export default function PublicLayout() {
   return (
     <div className="flex flex-col min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#4f6ef7] to-[#6c5ce7] flex items-center justify-center shadow-md">
-              <Building2 className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-lg font-bold text-gray-800">
-              <span className="text-[#0a96f4]">Мој</span>Скопје
-            </span>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex items-center gap-1">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? 'text-[#0a96f4] bg-[#e8f4fe]'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  {item.label}
-                </NavLink>
-              )
-            })}
-          </nav>
-
-          {/* Right Section */}
-          <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
-            </button>
-            <div className="flex items-center gap-2.5 pl-3 border-l border-gray-100">
-              <div className="text-right">
-                <p className="text-sm font-semibold text-gray-700">Петар Петровски</p>
-                <p className="text-xs text-gray-400">Граѓанин</p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-                ПП
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <MainNavbar />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col">
