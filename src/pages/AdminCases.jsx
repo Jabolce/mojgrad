@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Search,
   Bell,
@@ -16,29 +16,35 @@ import {
   X,
   ChevronDown,
   Activity,
-  Settings
+  Settings,
+  Loader2
 } from 'lucide-react'
-import { casesData } from '../data/mockData'
+import { getReports, deleteReport, updateReport, updateReportStatus, createReport, categoryMap, statusMap } from '../api/apiService'
 
 const statusConfig = {
   'Во тек': { icon: <Clock className="w-3.5 h-3.5" />, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-100' },
   'Нов': { icon: <Clock className="w-3.5 h-3.5" />, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
   'Решен': { icon: <CheckCircle2 className="w-3.5 h-3.5" />, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
-  'Одбиен': { icon: <AlertCircle className="w-3.5 h-3.5" />, bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-100' },
-  'Пријавено': { icon: <Clock className="w-3.5 h-3.5" />, bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
-  'Решено': { icon: <CheckCircle2 className="w-3.5 h-3.5" />, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
 }
 
-const getStatus = (status) => {
-  if (status === 'Во тек') return 'Во тек';
-  if (status === 'Нов' || status === 'Пријавено') return 'Нов';
-  if (status === 'Решено' || status === 'Решен') return 'Решен';
-  return 'Одбиен';
+// Map backend status enum to Macedonian display label
+const getDisplayStatus = (apiStatus) => {
+  return statusMap[apiStatus]?.label || apiStatus
 }
+
+// Map backend category enum to Macedonian display label
+const getDisplayCategory = (apiCategory) => {
+  return categoryMap[apiCategory]?.label || apiCategory
+}
+
+const ITEMS_PER_PAGE = 8
 
 export default function AdminCases() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [cases, setCases] = useState(casesData)
+  const [cases, setCases] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // States for Modal
   const [showAddModal, setShowAddModal] = useState(false)
@@ -49,21 +55,49 @@ export default function AdminCases() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
 
+  // Fetch reports from API on mount
+  useEffect(() => {
+    fetchReports()
+  }, [])
+
+  const fetchReports = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await getReports()
+      setCases(data)
+    } catch (err) {
+      console.error('Failed to fetch reports:', err)
+      setError('Не можевме да ги вчитаме пријавите. Обидете се повторно.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Filter Logic
   const filteredCases = cases.filter(c => {
-    const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.location.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === '' || c.category === categoryFilter;
-    const matchesStatus = statusFilter === '' || getStatus(c.status) === statusFilter;
+    const desc = (c.description || '').toLowerCase()
+    const id = String(c.id || '')
+    const inst = (c.institutionName || '').toLowerCase()
+    const matchesSearch = desc.includes(searchQuery.toLowerCase()) ||
+      id.includes(searchQuery.toLowerCase()) ||
+      inst.includes(searchQuery.toLowerCase())
+    const matchesCategory = categoryFilter === '' || c.category === categoryFilter
+    const matchesStatus = statusFilter === '' || c.status === statusFilter
 
-    return matchesSearch && matchesCategory && matchesStatus;
+    return matchesSearch && matchesCategory && matchesStatus
   })
 
   // Handlers
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Дали сте сигурни дека сакате да го избришете овој случај?')) {
-      setCases(prev => prev.filter(c => c.id !== id))
+      try {
+        await deleteReport(id)
+        setCases(prev => prev.filter(c => c.id !== id))
+      } catch (err) {
+        console.error('Delete failed:', err)
+        alert('Бришењето не успеа. Обидете се повторно.')
+      }
     }
   }
 
@@ -72,27 +106,47 @@ export default function AdminCases() {
     setShowAddModal(true)
   }
 
-  const handleSave = (formData) => {
-    if (editingCase) {
-      setCases(prev => prev.map(c => c.id === editingCase.id ? { ...c, ...formData } : c))
-    } else {
-      const newId = `#2024-0${Math.floor(10 + Math.random() * 90)}`
-      const newCase = {
-        ...formData,
-        id: newId,
-        date: new Date().toLocaleDateString('mk-MK', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-        institution: 'Нова Институција', // Default placeholder
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async (formData) => {
+    setSaving(true)
+    try {
+      if (editingCase) {
+        await updateReport(editingCase.id, {
+          description: formData.description,
+          category: formData.category,
+          status: formData.status,
+        })
+        if (formData.status && formData.status !== editingCase.status) {
+          await updateReportStatus(editingCase.id, formData.status)
+        }
+        // Refetch to get the latest state
+        const refreshed = await getReports()
+        setCases(refreshed)
+      } else {
+        const created = await createReport({
+          description: formData.description,
+          category: formData.category,
+          latitude: formData.latitude || 42.0,
+          longitude: formData.longitude || 21.43,
+        })
+        setCases(prev => [created, ...prev])
       }
-      setCases(prev => [newCase, ...prev])
+      setShowAddModal(false)
+      setEditingCase(null)
+    } catch (err) {
+      console.error('Save failed:', err)
+      alert('Зачувувањето не успеа. Обидете се повторно.')
+    } finally {
+      setSaving(false)
     }
-    setShowAddModal(false)
-    setEditingCase(null)
   }
 
   const clearFilters = () => {
     setCategoryFilter('')
     setStatusFilter('')
     setSearchQuery('')
+    setCurrentPage(1)
   }
 
   return (
@@ -138,35 +192,50 @@ export default function AdminCases() {
       {/* ===== MAIN SCROLLABLE CONTENT ===== */}
       <div className="flex-1 overflow-y-auto" style={{ padding: '40px' }}>
 
+        {/* LOADING / ERROR STATE */}
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <span className="ml-3 text-gray-500 font-medium">Се вчитуваат пријавите...</span>
+          </div>
+        )}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-6 text-center">
+            <p className="text-red-600 font-medium">{error}</p>
+            <button onClick={fetchReports} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-colors">Обиди се повторно</button>
+          </div>
+        )}
+
+        {!loading && !error && (<>
         {/* STATS CARDS */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24, marginBottom: 40 }}>
           <StatCard
             icon={FileText} iconBg="bg-gradient-to-br from-blue-500 to-blue-600" iconColor="text-white"
             accentColor="bg-blue-500"
-            tag="Денес"
+            tag="Вкупно"
             value={cases.length.toString()}
-            label="Вкупно пријави" subLabel="+12% овој месец" subLabelColor="text-green-500"
+            label="Вкупно пријави" subLabel={`${cases.length} во системот`} subLabelColor="text-green-500"
           />
           <StatCard
             icon={Clock} iconBg="bg-gradient-to-br from-amber-50 to-amber-100" iconColor="text-amber-500"
             accentColor="bg-amber-400"
-            tag="Денес"
-            value={cases.filter(c => getStatus(c.status) === 'Нов').length.toString()}
-            label="Нови (непрегледани)" subLabel="Потребна акција" subLabelColor="text-amber-500"
+            tag="Нови"
+            value={cases.filter(c => c.status === 'OPEN' || c.status === 'ASSIGNED').length.toString()}
+            label="Нови случаи" subLabel="Потребна акција" subLabelColor="text-amber-500"
           />
           <StatCard
             icon={Clock} iconBg="bg-gradient-to-br from-purple-50 to-purple-100" iconColor="text-purple-500"
             accentColor="bg-purple-500"
-            tag="Денес"
-            value={cases.filter(c => getStatus(c.status) === 'Во тек').length.toString()}
-            label="Во решавање" subLabel="-5% од вчера" subLabelColor="text-gray-400"
+            tag="Во тек"
+            value={cases.filter(c => c.status === 'IN_PROGRESS').length.toString()}
+            label="Во решавање" subLabel="Се работи на нив" subLabelColor="text-gray-400"
           />
           <StatCard
             icon={CheckCircle2} iconBg="bg-gradient-to-br from-emerald-50 to-emerald-100" iconColor="text-emerald-500"
             accentColor="bg-emerald-500"
-            tag="Денес"
-            value={cases.filter(c => getStatus(c.status) === 'Решен').length.toString()}
-            label="Решени денес" subLabel="Висока ефикасност" subLabelColor="text-emerald-500"
+            tag="Завршени"
+            value={cases.filter(c => c.status === 'RESOLVED').length.toString()}
+            label="Решени" subLabel="Успешно завршени" subLabelColor="text-emerald-500"
           />
         </div>
 
@@ -206,11 +275,9 @@ export default function AdminCases() {
                   style={{ padding: '10px 20px', appearance: 'none', cursor: 'pointer' }}
                 >
                   <option value="">Сите категории</option>
-                  <option value="Инфраструктура">Инфраструктура</option>
-                  <option value="Екологија">Екологија</option>
-                  <option value="Осветлување">Осветлување</option>
-                  <option value="Урбанизам">Урбанизам</option>
-                  <option value="Водовод">Водовод</option>
+                  {Object.entries(categoryMap).map(([key, val]) => (
+                    <option key={key} value={key}>{val.label}</option>
+                  ))}
                 </select>
 
                 <select
@@ -220,10 +287,9 @@ export default function AdminCases() {
                   style={{ padding: '10px 20px', appearance: 'none', cursor: 'pointer' }}
                 >
                   <option value="">Сите статуси</option>
-                  <option value="Нов">Нов</option>
-                  <option value="Во тек">Во тек</option>
-                  <option value="Решен">Решен</option>
-                  <option value="Одбиен">Одбиен</option>
+                  {Object.entries(statusMap).map(([key, val]) => (
+                    <option key={key} value={key}>{val.label}</option>
+                  ))}
                 </select>
 
                 <button
@@ -239,29 +305,29 @@ export default function AdminCases() {
           <table className="w-full">
             <thead>
               <tr className="bg-[#f8fafc] border-b border-gray-100">
-                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '12%' }}>ID Број</th>
-                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '28%' }}>Наслов и Категорија</th>
-                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '15%' }}>Локација</th>
-                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '15%' }}>Статус</th>
-                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '15%' }}>Датум</th>
+                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '8%' }}>ID</th>
+                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '30%' }}>Опис и Категорија</th>
+                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '18%' }}>Институција</th>
+                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '14%' }}>Статус</th>
+                <th className="text-left text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '15%' }}>Координати</th>
                 <th className="text-right text-[12px] font-bold text-gray-500 uppercase tracking-wider" style={{ padding: '16px 32px', width: '15%' }}>Акции</th>
               </tr>
             </thead>
             <tbody>
-              {filteredCases.map((caseItem, index) => {
-                const s = statusConfig[getStatus(caseItem.status)] || statusConfig['Нов']
-                const displayId = caseItem.id.startsWith('#') ? 'CAS-' + caseItem.id.split('-')[1] : caseItem.id;
+              {filteredCases.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((caseItem, index) => {
+                const displayStatus = getDisplayStatus(caseItem.status)
+                const s = statusConfig[displayStatus] || statusConfig['Нов']
 
                 return (
-                  <tr key={index} className="border-b border-gray-50 hover:bg-[#f8fafc]/80 transition-all duration-200 group">
+                  <tr key={caseItem.id || index} className="border-b border-gray-50 hover:bg-[#f8fafc]/80 transition-all duration-200 group">
                     <td style={{ padding: '24px 32px' }}>
-                      <span className="inline-block px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg text-[13px] font-bold border border-blue-100/50">{displayId}</span>
+                      <span className="inline-block px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg text-[13px] font-bold border border-blue-100/50">#{caseItem.id}</span>
                     </td>
                     <td style={{ padding: '24px 32px', paddingRight: 20 }}>
-                      <p className="text-[14px] font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{caseItem.title}</p>
+                      <p className="text-[14px] font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">{caseItem.description}</p>
                       <div className="flex items-center gap-1.5 mt-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>
-                        <p className="text-[13px] font-medium text-gray-500">{caseItem.category}</p>
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: categoryMap[caseItem.category]?.color || '#6b7280' }}></div>
+                        <p className="text-[13px] font-medium text-gray-500">{getDisplayCategory(caseItem.category)}</p>
                       </div>
                     </td>
                     <td style={{ padding: '24px 32px' }}>
@@ -269,17 +335,17 @@ export default function AdminCases() {
                         <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-50 transition-colors">
                           <MapPin className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
                         </div>
-                        <span className="text-[13px] font-bold text-gray-700">{caseItem.location}</span>
+                        <span className="text-[13px] font-bold text-gray-700">{caseItem.institutionName || '—'}</span>
                       </div>
                     </td>
                     <td style={{ padding: '24px 32px' }}>
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[13px] font-bold border ${s.bg} ${s.text} ${s.border}`}>
                         {s.icon}
-                        {getStatus(caseItem.status)}
+                        {displayStatus}
                       </span>
                     </td>
                     <td style={{ padding: '24px 32px' }}>
-                      <span className="text-[13px] font-semibold text-gray-500">{caseItem.date}</span>
+                      <span className="text-[12px] font-mono font-semibold text-gray-400">{caseItem.latitude?.toFixed(4)}, {caseItem.longitude?.toFixed(4)}</span>
                     </td>
                     <td className="text-right" style={{ padding: '24px 32px' }}>
                       <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -311,29 +377,74 @@ export default function AdminCases() {
           </table>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between border-t border-gray-100 bg-white" style={{ padding: '20px 32px' }}>
-            <p className="text-[13px] font-medium text-gray-500">
-              Прикажани <span className="font-bold text-gray-900">{filteredCases.length}</span> од вкупно <span className="font-bold text-gray-900">{cases.length}</span> случаи
-            </p>
-            <div className="flex items-center gap-2">
-              <button className="text-[13px] font-bold text-gray-500 hover:text-gray-900 transition-colors" style={{ padding: '8px 16px' }}>Претходна</button>
-              {[1, 2, 3, '...', 25].map((page, i) => (
-                <button
-                  key={i}
-                  className={`text-[13px] font-bold w-9 h-9 rounded-xl flex items-center justify-center transition-all ${page === 1 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'text-gray-500 hover:bg-gray-100'}`}
-                >
-                  {page}
-                </button>
-              ))}
-              <button className="text-[13px] font-bold text-gray-500 hover:text-gray-900 transition-colors" style={{ padding: '8px 16px', marginLeft: 4 }}>Следна</button>
-            </div>
-          </div>
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(filteredCases.length / ITEMS_PER_PAGE))
+            const startItem = filteredCases.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1
+            const endItem = Math.min(currentPage * ITEMS_PER_PAGE, filteredCases.length)
+
+            // Generate page numbers with ellipsis
+            const getPageNumbers = () => {
+              const pages = []
+              if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) pages.push(i)
+              } else {
+                pages.push(1)
+                if (currentPage > 3) pages.push('...')
+                for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                  pages.push(i)
+                }
+                if (currentPage < totalPages - 2) pages.push('...')
+                pages.push(totalPages)
+              }
+              return pages
+            }
+
+            return (
+              <div className="flex items-center justify-between border-t border-gray-100 bg-white" style={{ padding: '20px 32px' }}>
+                <p className="text-[13px] font-medium text-gray-500">
+                  Прикажани <span className="font-bold text-gray-900">{startItem}–{endItem}</span> од вкупно <span className="font-bold text-gray-900">{filteredCases.length}</span> случаи
+                </p>
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className={`text-[13px] font-bold transition-colors ${currentPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-900'}`}
+                      style={{ padding: '8px 16px' }}
+                    >Претходна</button>
+                    {getPageNumbers().map((page, i) => (
+                      <button
+                        key={i}
+                        onClick={() => typeof page === 'number' && setCurrentPage(page)}
+                        disabled={page === '...'}
+                        className={`text-[13px] font-bold w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                          page === currentPage
+                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                            : page === '...'
+                              ? 'text-gray-400 cursor-default'
+                              : 'text-gray-500 hover:bg-gray-100'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className={`text-[13px] font-bold transition-colors ${currentPage === totalPages ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-900'}`}
+                      style={{ padding: '8px 16px', marginLeft: 4 }}
+                    >Следна</button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         {/* BOTTOM DASHBOARD CARDS */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
 
-          {/* Recent Activity */}
+          {/* Recent Activity - derived from actual report data */}
           <div className="bg-white rounded-[24px] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
@@ -342,85 +453,123 @@ export default function AdminCases() {
                 </div>
                 <h3 className="text-[16px] font-extrabold text-gray-900">Последна активност</h3>
               </div>
-              <button className="text-[13px] font-bold text-blue-600 hover:text-blue-700">Види сите</button>
             </div>
 
             <div className="flex flex-col gap-6 relative">
               <div className="absolute left-6 top-6 bottom-6 w-px bg-gray-100 -z-10"></div>
 
-              {/* Activity item 1 */}
-              <div className="flex gap-4 items-start">
-                <div className="w-12 h-12 rounded-full bg-white border-4 border-white shadow-sm flex items-center justify-center flex-shrink-0 z-10">
-                  <img src="https://ui-avatars.com/api/?name=Марија+К&background=fdf4ff&color=c026d3" alt="Марија" className="w-full h-full rounded-full" />
-                </div>
-                <div className="pt-1">
-                  <p className="text-[14px] text-gray-800 font-medium">
-                    Марија К. го промени статусот на <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[12px] font-bold ml-1">CAS-7241</span>
-                  </p>
-                  <p className="text-[12px] font-semibold text-gray-400 mt-1.5 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> пред 5 минути</p>
-                </div>
-              </div>
+              {cases.length === 0 && (
+                <p className="text-[14px] text-gray-400 text-center py-4">Нема активности</p>
+              )}
 
-              {/* Activity item 2 */}
-              <div className="flex gap-4 items-start">
-                <div className="w-12 h-12 rounded-full bg-white border-4 border-white shadow-sm flex items-center justify-center flex-shrink-0 z-10">
-                  <img src="https://ui-avatars.com/api/?name=Петар+С&background=eff6ff&color=2563eb" alt="Петар" className="w-full h-full rounded-full" />
-                </div>
-                <div className="pt-1">
-                  <p className="text-[14px] text-gray-800 font-medium">
-                    Петар С. избриша дупликат пријава <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[12px] font-bold ml-1">CAS-5512</span>
-                  </p>
-                  <p className="text-[12px] font-semibold text-gray-400 mt-1.5 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> пред 22 минути</p>
-                </div>
-              </div>
-
-              {/* Activity item 3 */}
-              <div className="flex gap-4 items-start">
-                <div className="w-12 h-12 rounded-full bg-white border-4 border-white shadow-sm flex items-center justify-center flex-shrink-0 z-10">
-                  <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center">
-                    <Settings className="w-4 h-4 text-gray-500" />
+              {cases.slice(-5).reverse().map((report) => {
+                const catInfo = categoryMap[report.category] || { label: report.category, color: '#6b7280' }
+                const statusLabel = statusMap[report.status]?.label || report.status
+                return (
+                  <div key={report.id} className="flex gap-4 items-start">
+                    <div className="w-12 h-12 rounded-full bg-white border-4 border-white shadow-sm flex items-center justify-center flex-shrink-0 z-10">
+                      <div className="w-full h-full rounded-full flex items-center justify-center" style={{ backgroundColor: catInfo.color + '18' }}>
+                        <span className="text-[14px] font-bold" style={{ color: catInfo.color }}>#{report.id}</span>
+                      </div>
+                    </div>
+                    <div className="pt-1 min-w-0">
+                      <p className="text-[14px] text-gray-800 font-medium truncate">
+                        {report.institutionName || 'Систем'} — <span className="text-gray-500">{statusLabel}</span>
+                      </p>
+                      <p className="text-[12px] text-gray-500 mt-1 truncate">{report.description}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold" style={{ backgroundColor: catInfo.color + '18', color: catInfo.color }}>{catInfo.label}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="pt-1">
-                  <p className="text-[14px] text-gray-800 font-medium">
-                    Систем автоматски додели категорија на <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[12px] font-bold ml-1">CAS-8192</span>
-                  </p>
-                  <p className="text-[12px] font-semibold text-gray-400 mt-1.5 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> пред 1 час</p>
-                </div>
-              </div>
+                )
+              })}
             </div>
           </div>
 
-          {/* System Notifications */}
-          <div className="bg-gradient-to-br from-blue-50 to-[#e0f2fe] rounded-[24px] p-8 relative overflow-hidden border border-blue-100">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-10 translate-x-1/2 -translate-y-1/2"></div>
+          {/* System Notifications - derived from actual data */}
+          {(() => {
+            const newCount = cases.filter(c => c.status === 'OPEN' || c.status === 'ASSIGNED').length
+            const inProgressCount = cases.filter(c => c.status === 'IN_PROGRESS').length
+            const resolvedCount = cases.filter(c => c.status === 'RESOLVED').length
 
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-blue-600" />
+            // Count reports per category
+            const categoryCounts = {}
+            cases.forEach(c => {
+              const label = categoryMap[c.category]?.label || c.category
+              categoryCounts[label] = (categoryCounts[label] || 0) + 1
+            })
+            const topCategories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]).slice(0, 3)
+
+            const hasCritical = newCount > 0
+
+            return (
+              <div className="bg-gradient-to-br from-blue-50 to-[#e0f2fe] rounded-[24px] p-8 relative overflow-hidden border border-blue-100 flex flex-col">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-10 translate-x-1/2 -translate-y-1/2"></div>
+
+                <div className="relative z-10 flex flex-col flex-1">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                      <AlertCircle className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <h3 className="text-[16px] font-extrabold text-[#0369a1]">Системски известувања</h3>
+                  </div>
+
+                  {/* Urgent notification */}
+                  {hasCritical ? (
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 mb-4 shadow-sm border border-white">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[11px] font-bold uppercase tracking-wider mb-3">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                        ПОТРЕБНА АКЦИЈА
+                      </span>
+                      <p className="text-[15px] font-bold text-[#0f172a] leading-relaxed">
+                        Имате <span className="text-blue-600 text-[18px]">{newCount}</span> нов{newCount === 1 ? 'а пријава' : 'и пријави'} кои чекаат обработка.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 mb-4 shadow-sm border border-white">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[11px] font-bold uppercase tracking-wider mb-3">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        СÈ Е ВО РЕД
+                      </span>
+                      <p className="text-[15px] font-bold text-[#0f172a] leading-relaxed">Нема итни пријави кои чекаат обработка.</p>
+                    </div>
+                  )}
+
+                  {/* Stats summary */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-white/70 backdrop-blur-sm rounded-xl p-4 text-center border border-white/80">
+                      <p className="text-[22px] font-extrabold text-blue-600">{inProgressCount}</p>
+                      <p className="text-[12px] font-semibold text-gray-500 mt-1">Во тек</p>
+                    </div>
+                    <div className="bg-white/70 backdrop-blur-sm rounded-xl p-4 text-center border border-white/80">
+                      <p className="text-[22px] font-extrabold text-emerald-600">{resolvedCount}</p>
+                      <p className="text-[12px] font-semibold text-gray-500 mt-1">Решени</p>
+                    </div>
+                  </div>
+
+                  {/* Top categories */}
+                  {topCategories.length > 0 && (
+                    <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-white/80 flex-1">
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">Најчести категории</p>
+                      <div className="flex flex-col gap-2">
+                        {topCategories.map(([label, count]) => (
+                          <div key={label} className="flex items-center justify-between">
+                            <span className="text-[13px] font-medium text-gray-700">{label}</span>
+                            <span className="text-[13px] font-bold text-blue-600">{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <h3 className="text-[16px] font-extrabold text-[#0369a1]">Системски известувања</h3>
               </div>
-
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 mb-6 shadow-sm border border-white">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[11px] font-bold uppercase tracking-wider mb-3">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                  ВИСОК ПРИОРИТЕТ
-                </span>
-                <p className="text-[15px] font-bold text-[#0f172a] leading-relaxed">
-                  Имате <span className="text-blue-600 text-[18px]">4</span> непрегледани пријави од секторот за водовод кои чекаат повеќе од 24 часа.
-                </p>
-              </div>
-
-              <button className="w-full bg-white text-blue-600 font-bold text-[14px] py-4 rounded-xl uppercase tracking-wider hover:bg-blue-600 hover:text-white transition-all shadow-sm hover:shadow-md border border-blue-100">
-                ПРЕГЛЕДАЈ ИТНИ СЛУЧАИ
-              </button>
-            </div>
-          </div>
+            )
+          })()}
 
         </div>
 
+        </>)}
       </div>
 
       {/* Add/Edit Modal */}
@@ -443,36 +592,26 @@ export default function AdminCases() {
               e.preventDefault();
               const formData = new FormData(e.target);
               handleSave({
-                title: formData.get('title'),
-                location: formData.get('location'),
+                description: formData.get('description'),
                 category: formData.get('category'),
-                status: formData.get('status')
+                status: formData.get('status'),
+                latitude: parseFloat(formData.get('latitude')) || 42.0,
+                longitude: parseFloat(formData.get('longitude')) || 21.43,
               });
             }} className="p-6 flex flex-col gap-5 bg-gray-50/50">
 
               <div>
-                <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Наслов на пријава</label>
-                <input
-                  name="title"
-                  defaultValue={editingCase?.title || ''}
+                <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Опис на проблемот</label>
+                <textarea
+                  name="description"
+                  defaultValue={editingCase?.description || ''}
                   required
-                  className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
-                  placeholder="Пр. Оштетен асфалт на ул. Македонија..."
+                  minLength={5}
+                  maxLength={2000}
+                  rows={3}
+                  className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all resize-none"
+                  placeholder="Опишете го проблемот детално..."
                 />
-              </div>
-
-              <div>
-                <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Локација (Општина)</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    name="location"
-                    defaultValue={editingCase?.location || ''}
-                    required
-                    className="w-full bg-white border border-gray-200 rounded-lg p-2.5 pl-9 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
-                    placeholder="Пр. Центар"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-5">
@@ -480,15 +619,12 @@ export default function AdminCases() {
                   <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Категорија</label>
                   <select
                     name="category"
-                    defaultValue={editingCase?.category || 'Инфраструктура'}
+                    defaultValue={editingCase?.category || 'ROAD'}
                     className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all appearance-none"
                   >
-                    <option value="Инфраструктура">Инфраструктура</option>
-                    <option value="Екологија">Екологија</option>
-                    <option value="Осветлување">Осветлување</option>
-                    <option value="Урбанизам">Урбанизам</option>
-                    <option value="Водовод">Водовод</option>
-                    <option value="Хигиена">Хигиена</option>
+                    {Object.entries(categoryMap).map(([key, val]) => (
+                      <option key={key} value={key}>{val.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -496,16 +632,40 @@ export default function AdminCases() {
                   <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Статус</label>
                   <select
                     name="status"
-                    defaultValue={getStatus(editingCase?.status || 'Нов')}
+                    defaultValue={editingCase?.status || 'OPEN'}
                     className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all appearance-none"
                   >
-                    <option value="Нов">Нов</option>
-                    <option value="Во тек">Во тек</option>
-                    <option value="Решен">Решен</option>
-                    <option value="Одбиен">Одбиен</option>
+                    {Object.entries(statusMap).map(([key, val]) => (
+                      <option key={key} value={key}>{val.label}</option>
+                    ))}
                   </select>
                 </div>
               </div>
+
+              {!editingCase && (
+                <div className="grid grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Геогр. ширина (Lat)</label>
+                    <input
+                      name="latitude"
+                      type="number"
+                      step="0.0001"
+                      defaultValue="42.0000"
+                      className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-semibold text-gray-700 mb-1.5">Геогр. должина (Lng)</label>
+                    <input
+                      name="longitude"
+                      type="number"
+                      step="0.0001"
+                      defaultValue="21.4300"
+                      className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-[14px] text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 mt-2 pt-5 border-t border-gray-200/60">
                 <button
@@ -517,9 +677,11 @@ export default function AdminCases() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 text-[14px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all shadow-sm"
+                  disabled={saving}
+                  className="px-5 py-2.5 text-[14px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {editingCase ? 'Зачувај промени' : 'Додади случај'}
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {saving ? 'Се зачувува...' : editingCase ? 'Зачувај промени' : 'Додади случај'}
                 </button>
               </div>
 

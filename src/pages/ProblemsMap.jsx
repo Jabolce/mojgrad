@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Search,
   Filter,
@@ -13,11 +13,17 @@ import {
   Layers,
   Calendar,
   Tag,
+  Loader2,
+  Flame,
+  Zap,
+  Shield,
+  Trash2,
+  HelpCircle,
 } from 'lucide-react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { mapProblems } from '../data/mockData'
+import { getReports, categoryMap, statusMap } from '../api/apiService'
 
 // Fix default marker icon issue with webpack/vite
 delete L.Icon.Default.prototype._getIconUrl
@@ -52,19 +58,22 @@ function createColoredIcon(color, isResolved = false) {
   })
 }
 
+// Map backend category enums to filter buttons
 const filterCategories = [
   { id: 'all', label: 'Сите', icon: null, active: true },
-  { id: 'water', label: 'Водовод', icon: Droplets, color: '#0a96f4', categoryMatch: 'Водовод и канализација' },
-  { id: 'lighting', label: 'Осветлување', icon: Lightbulb, color: '#f59e0b', categoryMatch: 'Јавно осветлување' },
-  { id: 'roads', label: 'Патишта', icon: Construction, color: '#8b5cf6', categoryMatch: 'Патна инфраструктура' },
-  { id: 'ecology', label: 'Екологија', icon: Leaf, color: '#22c55e', categoryMatch: 'Екологија' },
+  { id: 'WATER', label: 'Водовод', icon: Droplets, color: '#0a96f4' },
+  { id: 'ELECTRICITY', label: 'Електрика', icon: Zap, color: '#eab308' },
+  { id: 'ROAD', label: 'Патишта', icon: Construction, color: '#8b5cf6' },
+  { id: 'WASTE', label: 'Отпад', icon: Leaf, color: '#22c55e' },
+  { id: 'FIRE', label: 'Пожар', icon: Flame, color: '#ef4444' },
 ]
 
 const legendItems = [
   { color: '#0a96f4', label: 'Водовод и канализација' },
-  { color: '#f59e0b', label: 'Јавно осветлување' },
+  { color: '#eab308', label: 'Електрична енергија' },
   { color: '#8b5cf6', label: 'Патна инфраструктура' },
   { color: '#22c55e', label: 'Решени случаи' },
+  { color: '#ef4444', label: 'Пожар / Итни' },
 ]
 
 function MapControls() {
@@ -114,19 +123,42 @@ export default function ProblemsMap() {
   const [activeFilter, setActiveFilter] = useState('all')
   const [showFilters, setShowFilters] = useState(false)
   const [selectedProblem, setSelectedProblem] = useState(null)
+  const [reports, setReports] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const filteredProblems = mapProblems.filter((p) => {
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const data = await getReports()
+        setReports(data)
+      } catch (err) {
+        console.error('Failed to fetch reports for map:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const filteredProblems = reports.filter((p) => {
+    if (!p.latitude || !p.longitude) return false
+
     const matchesSearch =
       !searchQuery ||
-      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (p.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.institutionName || '').toLowerCase().includes(searchQuery.toLowerCase())
 
     const matchesFilter =
-      activeFilter === 'all' ||
-      filterCategories.find((f) => f.id === activeFilter)?.categoryMatch === p.category
+      activeFilter === 'all' || p.category === activeFilter
 
     return matchesSearch && matchesFilter
   })
+
+  const getMarkerColor = (report) => {
+    if (report.status === 'RESOLVED') return '#22c55e'
+    return categoryMap[report.category]?.color || '#6b7280'
+  }
 
   return (
     <div className="flex flex-col flex-1">
@@ -138,7 +170,7 @@ export default function ProblemsMap() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Пребарај по наслов или населба..."
+              placeholder="Пребарај по опис или институција..."
               className="w-full pr-4 h-10 bg-[#f5f7fb] border border-gray-200 rounded-full text-[13px] leading-normal text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0a96f4]/20 focus:border-[#0a96f4] transition-all"
               style={{ paddingLeft: 44 }}
               value={searchQuery}
@@ -168,19 +200,18 @@ export default function ProblemsMap() {
                 </button>
               )
             })}
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 transition-all"
-            >
-              <Filter className="w-4 h-4" />
-              Останати Филтри
-            </button>
           </div>
         </div>
       </div>
 
       {/* Map Area */}
       <div className="relative flex-1">
+        {loading && (
+          <div className="absolute inset-0 z-[1001] bg-white/80 backdrop-blur-sm flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <span className="ml-3 text-gray-600 font-medium">Се вчитува мапата...</span>
+          </div>
+        )}
         <MapContainer
           center={[42.0, 21.4340]}
           zoom={14}
@@ -193,39 +224,40 @@ export default function ProblemsMap() {
           />
           <MapControls />
 
-          {filteredProblems.map((problem) => (
+          {filteredProblems.map((report) => (
             <Marker
-              key={problem.id}
-              position={[problem.lat, problem.lng]}
-              icon={createColoredIcon(problem.color, problem.status === 'resolved')}
+              key={report.id}
+              position={[report.latitude, report.longitude]}
+              icon={createColoredIcon(getMarkerColor(report), report.status === 'RESOLVED')}
               eventHandlers={{
-                click: () => setSelectedProblem(problem),
+                click: () => setSelectedProblem(report),
               }}
             >
               <Popup className="custom-popup">
                 <div className="p-4 min-w-[220px]">
                   <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-bold text-gray-800 text-sm">{problem.title}</h3>
+                    <h3 className="font-bold text-gray-800 text-sm pr-2 line-clamp-2">{report.description}</h3>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                        problem.status === 'resolved'
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex-shrink-0 ${
+                        report.status === 'RESOLVED'
                           ? 'bg-green-50 text-green-600'
                           : 'bg-[#e8f4fe] text-[#0a96f4]'
                       }`}
                     >
-                      {problem.status === 'resolved' ? 'Решен' : 'Активен'}
+                      {statusMap[report.status]?.label || report.status}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 mb-3">{problem.description}</p>
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
                       <Tag className="w-3 h-3" />
-                      {problem.category}
+                      {categoryMap[report.category]?.label || report.category}
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                      <Calendar className="w-3 h-3" />
-                      {problem.date}
-                    </div>
+                    {report.institutionName && (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <Calendar className="w-3 h-3" />
+                        {report.institutionName}
+                      </div>
+                    )}
                   </div>
                 </div>
               </Popup>
@@ -250,6 +282,12 @@ export default function ProblemsMap() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Report count badge */}
+        <div className="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 px-4 py-2.5">
+          <span className="text-sm font-bold text-gray-800">{filteredProblems.length}</span>
+          <span className="text-xs text-gray-500 ml-1.5">пријави на мапа</span>
         </div>
       </div>
     </div>
