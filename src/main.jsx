@@ -1,8 +1,9 @@
 import React, { StrictMode } from "react";
-import ReactDOM, { createRoot } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 
-import "leaflet/dist/leaflet.css";
 import "./index.css";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "leaflet/dist/leaflet.css";
 
 import App from "./App";
 
