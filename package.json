@@ -1,7 +1,7 @@
 {
-  "name": "mojgrad-react",
-  "private": true,
+  "name": "mojgrad",
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
