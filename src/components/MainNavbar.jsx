@@ -31,7 +31,7 @@ const MainNavbar = () => {
             Пријави Проблем
           </NavLink>
 
-          <NavLink to="/problems" className={navClass}>
+          <NavLink to="/active_problems" className={navClass}>
             Активни Проблеми
           </NavLink>
 

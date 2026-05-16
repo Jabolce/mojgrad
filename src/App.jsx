@@ -18,6 +18,7 @@ import AdminCases from "./pages/AdminCases";
 
 import { AppProvider } from "./context/AppContext";
 import { AuthProvider } from "./context/AuthContext";
+import CasesList from "./pages/CasesList.jsx";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/map" element={<ProblemsMap />} />
             <Route path="/case/:id" element={<CaseDetailPage />} />
             <Route path="/report" element={<ReportForm />} />
+            <Route path="/active_problems" element={<CasesList />} />
 
             {/* Login */}
             <Route path="/admin/login" element={<LoginPage />} />
