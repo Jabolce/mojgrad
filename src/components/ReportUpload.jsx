@@ -1,7 +1,13 @@
-function ReportUpload({ selectedFile, setSelectedFile }) {
+import { X } from "lucide-react";
+
+function ReportUpload({ selectedFile, setSelectedFile, imagePreview }) {
   function handleFileChange(event) {
     const file = event.target.files[0];
     if (file) setSelectedFile(file);
+  }
+
+  function handleRemoveFile() {
+    setSelectedFile(null);
   }
 
   return (
@@ -50,6 +56,33 @@ function ReportUpload({ selectedFile, setSelectedFile }) {
           </p>
         )}
       </div>
+
+      {/* Image Preview */}
+      {selectedFile && imagePreview && (
+        <div className="!mt-6 !border !border-gray-200 !rounded-2xl !overflow-hidden !bg-white !shadow-sm">
+          <div className="!flex !items-center !justify-between !px-4 !py-3 !bg-gray-50 !border-b !border-gray-100">
+            <span className="!text-sm !font-semibold !text-gray-700">
+              Преглед на слика
+            </span>
+            <button
+              type="button"
+              onClick={handleRemoveFile}
+              className="!text-gray-400 hover:!text-red-500 !transition"
+              title="Отстрани слика"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="!relative !max-h-[300px] !overflow-hidden !flex !items-center !justify-center !bg-gray-100">
+            <img
+              src={imagePreview}
+              alt="Преглед"
+              className="!max-w-full !max-h-[300px] !object-contain"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }

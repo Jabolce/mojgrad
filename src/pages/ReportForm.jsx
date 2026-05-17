@@ -7,7 +7,12 @@ import ReportDetails from "../components/ReportDetails";
 import ReportUpload from "../components/ReportUpload";
 import ReportMap from "../components/ReportMap";
 
-import { getCategories, createReport, categoryMap } from "../api/apiService";
+import {
+  getCategories,
+  createReport,
+  categoryMap,
+  fileToDataUrl,
+} from "../api/apiService";
 
 function ReportForm() {
   const [categories, setCategories] = useState([]);
@@ -17,15 +22,14 @@ function ReportForm() {
   const [position, setPosition] = useState({ lat: 41.9981, lng: 21.4254 });
   const [submitting, setSubmitting] = useState(false);
 
+  const [imagePreview, setImagePreview] = useState(null);
+
   const navigate = useNavigate();
 
-  // Fetch categories from backend on mount
   useEffect(() => {
     async function fetchCategories() {
       try {
         const data = await getCategories();
-        // data is an array of backend enum strings e.g. ["WATER", "ROAD", ...]
-        // Map them to { icon, name } shape that ReportCategorySelector expects
         const iconMap = {
           WATER: "🚰",
           FIRE: "🔥",
@@ -37,7 +41,7 @@ function ReportForm() {
           OTHER: "❓",
         };
         const mapped = data.map((key) => ({
-          key, // backend enum value we'll send on submit
+          key,
           icon: iconMap[key] || "❓",
           name: categoryMap[key]?.label || key,
         }));
@@ -49,6 +53,27 @@ function ReportForm() {
     fetchCategories();
   }, []);
 
+  useEffect(() => {
+    if (!selectedFile) {
+      setImagePreview(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function generatePreview() {
+      try {
+        const dataUrl = await fileToDataUrl(selectedFile);
+        if (!cancelled) setImagePreview(dataUrl);
+      } catch (err) {
+        console.error("Preview generation error:", err);
+      }
+    }
+
+    generatePreview();
+    return () => { cancelled = true; };
+  }, [selectedFile]);
+
   async function handleSubmit() {
     if (!selectedCategory || !description.trim()) {
       alert("Ве молиме изберете категорија и внесете опис.");
@@ -56,20 +81,21 @@ function ReportForm() {
     }
 
     setSubmitting(true);
+
     try {
-      await createReport({
-        description,
-        category: selectedCategory, // backend enum key e.g. "WATER"
+      const createdReport = await createReport({
+        description: description.trim(),
+        category: selectedCategory,
         latitude: position.lat,
         longitude: position.lng,
         image: selectedFile || undefined,
       });
 
-      alert("Пријавата е успешно испратена.");
       setSelectedCategory("");
       setDescription("");
       setSelectedFile(null);
-      navigate("/problems");
+      setImagePreview(null);
+      navigate(`/case/${createdReport.id}`);
     } catch (err) {
       alert("Грешка при испраќање: " + err.message);
     } finally {
@@ -106,6 +132,7 @@ function ReportForm() {
           <ReportUpload
             selectedFile={selectedFile}
             setSelectedFile={setSelectedFile}
+            imagePreview={imagePreview}
           />
 
           <div className="!mt-12 !border !rounded-2xl !px-6 !py-5 !font-semibold !text-gray-700">
@@ -118,7 +145,7 @@ function ReportForm() {
             disabled={submitting}
             className="!mt-8 !w-full !bg-orange-500 !text-white !font-bold !text-xl !py-5 !rounded-2xl shadow-lg hover:!bg-orange-600 !transition disabled:opacity-50"
           >
-            {submitting ? "Се испраќа..." : "Испрати пријава"}
+            {submitting ? "⏳ Се испраќа..." : "Испрати пријава"}
           </button>
         </section>
 

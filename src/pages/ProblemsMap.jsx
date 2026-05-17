@@ -18,6 +18,7 @@ import {
   Loader2,
   Flame,
   Zap,
+  Bot,
 } from "lucide-react";
 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
@@ -27,6 +28,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { getReports, categoryMap, statusMap } from "../api/apiService";
+import { formatDescriptionParts } from "../utils/formatDescription";
 
 // Fix default marker icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -321,50 +323,78 @@ export default function ProblemsMap() {
 
           <MapControls />
 
-          {filteredProblems.map((report) => (
-            <Marker
-              key={report.id}
-              position={[report.latitude, report.longitude]}
-              icon={createColoredIcon(
-                getMarkerColor(report),
-                report.status === "RESOLVED",
-              )}
-            >
-              <Popup className="custom-popup">
-                <div className="p-4 min-w-[220px]">
-                  <h3 className="font-bold text-sm mb-2">
-                    {report.description}
-                  </h3>
+          {filteredProblems.map((report) => {
+            const descParts = formatDescriptionParts(report.description);
+            return (
+              <Marker
+                key={report.id}
+                position={[report.latitude, report.longitude]}
+                icon={createColoredIcon(
+                  getMarkerColor(report),
+                  report.status === "RESOLVED",
+                )}
+              >
+                <Popup className="custom-popup">
+                  <div className="p-4 min-w-[220px] max-w-[280px]">
+                    {report.description ? (
+                      <div className="mb-3 space-y-2">
+                        {descParts.userReport && (
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 m-0">
+                              {descParts.userLabel}
+                            </p>
+                            <p className="text-sm font-semibold text-gray-800 leading-snug m-0">
+                              {descParts.userReport}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {descParts.aiVision && (
+                          <div className="rounded-lg border border-blue-100 bg-blue-50 p-2 mt-2">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Bot size={12} className="text-[#0a96f4]" />
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0a96f4] m-0">
+                                {descParts.aiLabel}
+                              </p>
+                            </div>
+                            <p className="text-xs text-gray-700 leading-relaxed m-0">
+                              {descParts.aiVision}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic mb-2 m-0">Нема опис.</p>
+                    )}
 
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <Tag className="w-3 h-3" />
-
-                    {categoryMap[report.category]?.label || report.category}
-                  </div>
-
-                  {report.institutionName && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
-                      <Calendar className="w-3 h-3" />
-
-                      {report.institutionName}
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <Tag className="w-3 h-3 shrink-0" />
+                      {categoryMap[report.category]?.label || report.category}
                     </div>
-                  )}
 
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-[#e8f4fe] text-[#0a96f4]">
-                      {statusMap[report.status]?.label || report.status}
-                    </span>
-                    <a
-                      href={`/case/${report.id}`}
-                      className="text-xs font-semibold text-[#0a96f4] hover:underline"
-                    >
-                      Детали →
-                    </a>
+                    {report.institutionName && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
+                        <Calendar className="w-3 h-3 shrink-0" />
+                        {report.institutionName}
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-[#e8f4fe] text-[#0a96f4]">
+                        {statusMap[report.status]?.label || report.status}
+                      </span>
+                      <a
+                        href={`/case/${report.id}`}
+                        className="text-xs font-semibold text-[#0a96f4] hover:underline"
+                      >
+                        Детали →
+                      </a>
+                    </div>
                   </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
         {/* Legend */}
         <div className="absolute bottom-6 left-6 z-[1000] bg-white rounded-2xl shadow-xl border border-gray-100 p-5 min-w-[200px]">

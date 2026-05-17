@@ -1,7 +1,6 @@
 const API_BASE = 'https://smartcity-0e3f.onrender.com'
 const ADMIN_AUTH = 'Basic ' + btoa('admin:admin123')
 
-// ─── Category mapping: backend enum → Macedonian display label ───
 export const categoryMap = {
   WATER: { label: 'Водовод и канализација', color: '#0a96f4', icon: 'droplets' },
   FIRE: { label: 'Пожар', color: '#ef4444', icon: 'flame' },
@@ -13,7 +12,6 @@ export const categoryMap = {
   OTHER: { label: 'Останато', color: '#6b7280', icon: 'help-circle' },
 }
 
-// ─── Status mapping: backend enum → Macedonian display label ───
 export const statusMap = {
   OPEN: { label: 'Нов', color: 'orange' },
   ASSIGNED: { label: 'Нов', color: 'orange' },
@@ -21,7 +19,6 @@ export const statusMap = {
   RESOLVED: { label: 'Решен', color: 'green' },
 }
 
-// ─── Helpers ───
 async function apiFetch(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`
   const { headers: extraHeaders, ...restOptions } = options
@@ -33,7 +30,6 @@ async function apiFetch(endpoint, options = {}) {
     const text = await res.text().catch(() => '')
     throw new Error(`API ${res.status}: ${text || res.statusText}`)
   }
-  // Some DELETE endpoints return no body
   const contentType = res.headers.get('content-type')
   if (contentType && contentType.includes('application/json')) {
     return res.json()
@@ -41,38 +37,26 @@ async function apiFetch(endpoint, options = {}) {
   return null
 }
 
-// ─── REPORTS ──────────────────────────────────────────────────
-
-/** Get all reports */
 export async function getReports() {
   return apiFetch('/api/reports')
 }
 
-/** Get a single report by ID */
 export async function getReportById(id) {
   return apiFetch(`/api/reports/${id}`)
 }
 
-/** Create a new report (with optional image) */
 export async function createReport({ description, category, latitude, longitude, image }) {
-  const params = new URLSearchParams()
-  params.append('description', description)
-  if (category) params.append('category', category)
-  params.append('latitude', latitude)
-  params.append('longitude', longitude)
+  const formData = new FormData()
+  formData.append('description', description)
+  if (category) formData.append('category', category)
+  formData.append('latitude', String(latitude))
+  formData.append('longitude', String(longitude))
+  if (image) formData.append('image', image)
 
-  const url = `${API_BASE}/api/reports?${params.toString()}`
-
-  const options = { method: 'POST' }
-
-  if (image) {
-    const formData = new FormData()
-    formData.append('image', image)
-    options.body = formData
-    // Don't set Content-Type, let browser set multipart boundary
-  }
-
-  const res = await fetch(url, options)
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: 'POST',
+    body: formData,
+  })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`API ${res.status}: ${text || res.statusText}`)
@@ -80,7 +64,6 @@ export async function createReport({ description, category, latitude, longitude,
   return res.json()
 }
 
-/** Update a report (admin) */
 export async function updateReport(id, data) {
   return apiFetch(`/api/admin/reports/${id}`, {
     method: 'PUT',
@@ -89,7 +72,6 @@ export async function updateReport(id, data) {
   })
 }
 
-/** Update report status (admin) */
 export async function updateReportStatus(id, status) {
   return apiFetch(`/api/admin/reports/${id}/status`, {
     method: 'PUT',
@@ -98,7 +80,6 @@ export async function updateReportStatus(id, status) {
   })
 }
 
-/** Delete a report (admin) */
 export async function deleteReport(id) {
   return apiFetch(`/api/admin/reports/${id}`, {
     method: 'DELETE',
@@ -106,39 +87,41 @@ export async function deleteReport(id) {
   })
 }
 
-/** Get all categories */
 export async function getCategories() {
   return apiFetch('/api/reports/categories')
 }
 
-/** Generate AI description from image */
-export async function generateAIDescription(imageFile) {
-  const formData = new FormData()
-  formData.append('image', imageFile)
+const AI_API_BASE = 'https://tmilenkovski-smartcity-ai.hf.space'
 
-  const res = await fetch(`${API_BASE}/api/reports/ai-description`, {
+export async function analyzeImageWithAI(imageDataUrl) {
+  const res = await fetch(`${AI_API_BASE}/generate-description`, {
     method: 'POST',
-    body: formData,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageUrl: imageDataUrl }),
   })
   if (!res.ok) {
-    throw new Error(`AI description failed: ${res.status}`)
+    throw new Error(`AI analysis failed: ${res.status}`)
   }
-  return res.text()
+  return res.json()
 }
 
-// ─── INSTITUTIONS ─────────────────────────────────────────────
+export function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
-/** Get all institutions */
 export async function getInstitutions() {
   return apiFetch('/api/institutions')
 }
 
-/** Get institution by ID */
 export async function getInstitutionById(id) {
   return apiFetch(`/api/institutions/${id}`)
 }
 
-/** Create institution (admin) */
 export async function createInstitution(data) {
   return apiFetch('/api/institutions', {
     method: 'POST',
@@ -147,7 +130,6 @@ export async function createInstitution(data) {
   })
 }
 
-/** Update institution (admin) */
 export async function updateInstitution(id, data) {
   return apiFetch(`/api/institutions/${id}`, {
     method: 'PUT',
@@ -156,7 +138,6 @@ export async function updateInstitution(id, data) {
   })
 }
 
-/** Delete institution (admin) */
 export async function deleteInstitution(id) {
   return apiFetch(`/api/institutions/${id}`, {
     method: 'DELETE',
