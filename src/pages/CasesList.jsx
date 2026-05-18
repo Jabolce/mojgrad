@@ -205,7 +205,7 @@ function CasesList() {
           </div>
 
           <div className="!hidden sm:!block !w-full !overflow-x-auto">
-            <table className="!w-full !min-w-[850px] !text-left">
+            <table className="!w-full !min-w-[950px] !text-left">
               <thead className="!bg-gray-50 !text-gray-500 !text-sm">
                 <tr>
                   <th className="!px-6 !py-4">ID Број</th>
@@ -213,6 +213,7 @@ function CasesList() {
                   <th className="!px-6 !py-4">Датум</th>
                   <th className="!px-6 !py-4">Надлежна институција</th>
                   <th className="!px-6 !py-4">Статус</th>
+                  <th className="!px-6 !py-4">Детали</th>
                 </tr>
               </thead>
 
@@ -220,7 +221,7 @@ function CasesList() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan="5"
+                      colSpan="6"
                       className="!text-center !py-10 !text-gray-500"
                     >
                       Се вчитуваат пријавите...
@@ -229,7 +230,7 @@ function CasesList() {
                 ) : filteredCases.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="5"
+                      colSpan="6"
                       className="!text-center !py-10 !text-gray-500"
                     >
                       Нема пронајдени случаи.
@@ -253,12 +254,7 @@ function CasesList() {
                         className="!border-t hover:!bg-gray-50 transition-colors"
                       >
                         <td className="!px-6 !py-5 !font-semibold !text-gray-600">
-                          <Link
-                            to={`/case/${item.id}`}
-                            className="!text-blue-600 hover:!underline"
-                          >
-                            #{item.id}
-                          </Link>
+                          #{item.id}
                         </td>
 
                         <td className="!px-6 !py-5 !max-w-md">
@@ -341,6 +337,15 @@ function CasesList() {
                           >
                             {displayStatus}
                           </span>
+                        </td>
+
+                        <td className="!px-6 !py-5">
+                          <Link
+                            to={`/case/${item.id}`}
+                            className="!inline-flex !items-center !justify-center !bg-blue-500 hover:!bg-blue-600 !text-white !px-4 !py-2 !rounded-xl !font-semibold !text-sm !no-underline !transition"
+                          >
+                            Детали
+                          </Link>
                         </td>
                       </tr>
                     );
@@ -471,6 +476,13 @@ function CasesList() {
                         </p>
                       </div>
                     </div>
+
+                    <Link
+                      to={`/case/${item.id}`}
+                      className="!mt-4 !w-full !inline-flex !items-center !justify-center !bg-blue-500 hover:!bg-blue-600 !text-white !px-4 !py-2.5 !rounded-xl !font-semibold !text-sm !no-underline !transition"
+                    >
+                      Детали
+                    </Link>
                   </div>
                 );
               })
