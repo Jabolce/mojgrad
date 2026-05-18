@@ -7,22 +7,18 @@ const DashboardLayout = () => {
     <div className="min-h-screen" style={{ backgroundColor: "#f8fafc" }}>
       <Sidebar />
 
-      <div style={{ marginLeft: 260 }}>
-        <div className="px-8 pt-8 pb-4">
-          <div className="flex justify-center mb-8">
-            <div 
-              className="relative flex items-center bg-white rounded-2xl transition-all duration-200 hover:shadow-md"
-              style={{ 
-                width: 480, 
-                maxWidth: "100%", 
+      <div className="lg:ml-[260px] ml-0">
+        <div className="px-4 sm:px-6 lg:px-8 pt-20 lg:pt-8 pb-4">
+          <div className="flex justify-center mb-6 lg:mb-8">
+            <div
+              className="relative flex items-center bg-white rounded-2xl transition-all duration-200 hover:shadow-md w-full sm:w-[480px]"
+              style={{
+                maxWidth: "100%",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                border: "1px solid #f1f5f9"
+                border: "1px solid #f1f5f9",
               }}
             >
-              <Search 
-                className="absolute left-5 text-gray-400"
-                size={18}
-              />
+              <Search className="absolute left-5 text-gray-400" size={18} />
               <input
                 type="text"
                 placeholder="Пребарај..."
